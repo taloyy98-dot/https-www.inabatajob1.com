@@ -1,6 +1,8 @@
 import streamlit as st
-from datetime import date
+import sqlite3
 import pandas as pd
+from datetime import date
+from fpdf import FPDF
 
 # ===== ตั้งค่าหน้า =====
 st.set_page_config(page_title="ฟอร์มใบสั่งงาน IK", page_icon="📄", layout="centered")
@@ -16,6 +18,29 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
+# ===== DB Setup =====
+conn = sqlite3.connect("work_orders.db", check_same_thread=False)
+c = conn.cursor()
+c.execute("""
+CREATE TABLE IF NOT EXISTS work_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assigned_to TEXT,
+    order_date TEXT,
+    time TEXT,
+    contact TEXT,
+    company TEXT,
+    department TEXT,
+    address TEXT,
+    phone TEXT,
+    ordered_by TEXT,
+    receiver TEXT,
+    receive_date TEXT,
+    checklist TEXT,
+    remark TEXT
+)
+""")
+conn.commit()
 
 # ===== Layout หลัก (สองคอลัมน์) =====
 left_col, right_col = st.columns([1, 2])
@@ -60,24 +85,55 @@ remark = st.text_area("📝 หมายเหตุ / Remark")
 
 # ===== ปุ่ม Submit =====
 if st.button("✅ บันทึกข้อมูล"):
-    st.success("บันทึกข้อมูลเรียบร้อย ✅")
+    c.execute("""
+    INSERT INTO work_orders (
+        assigned_to, order_date, time, contact, company, department,
+        address, phone, ordered_by, receiver, receive_date, checklist, remark
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        assigned_to, str(order_date), time, contact, company, department,
+        address, phone, ordered_by, receiver, str(receive_date),
+        ", ".join(selected_checklist), remark
+    ))
+    conn.commit()
+    st.success("✅ บันทึกข้อมูลเรียบร้อยแล้ว!")
 
-    st.write("### == ฟอร์มใบสั่งงาน ==")
-    st.write("มอบหมายให้:", assigned_to)
-    st.write("วันที่สั่งงาน:", order_date)
-    st.write("เวลา:", time)
-    st.write("ติดต่อ:", contact)
-    st.write("บริษัท:", company)
-    st.write("แผนก:", department)
-    st.write("ที่อยู่:", address)
-    st.write("โทร:", phone)
-    st.write("ผู้สั่งงาน:", ordered_by)
-    st.write("ผู้รับ:", receiver)
-    st.write("วันที่ (รับงาน):", receive_date)
+# ===== ดึงข้อมูลทั้งหมด =====
+st.markdown("---")
+st.subheader("📑 ข้อมูลที่บันทึกไว้")
 
-    st.write("### == Checklist ที่เลือก ==")
-    for item in selected_checklist:
-        st.write("✔", item)
+df = pd.read_sql_query("SELECT * FROM work_orders ORDER BY id DESC", conn)
+st.dataframe(df, use_container_width=True)
 
-    st.write("### == หมายเหตุ ==")
-    st.write(remark)
+# ===== ฟังก์ชันสร้าง PDF =====
+def generate_pdf(row):
+    pdf = FPDF()
+    pdf.add_page()
+
+    # ฟอนต์ไทย (ต้องมีไฟล์ THSarabunNew.ttf ในโฟลเดอร์เดียวกัน)
+    pdf.add_font("THSarabunNew", "", "THSarabunNew.ttf", uni=True)
+    pdf.set_font("THSarabunNew", size=16)
+
+    pdf.cell(0, 10, "📋 ใบสั่งงาน", ln=True, align="C")
+    pdf.ln(10)
+
+    # สร้างตาราง
+    col_width = 50
+    row_height = 10
+
+    for col, value in row.items():
+        pdf.cell(col_width, row_height, str(col), border=1)
+        pdf.multi_cell(0, row_height, str(value), border=1)
+    return pdf.output(dest="S").encode("latin-1")
+
+# ===== ปุ่มพิมพ์ / ดาวน์โหลด PDF =====
+if not df.empty:
+    latest_row = df.iloc[0]
+    pdf_file = generate_pdf(latest_row)
+
+    st.download_button(
+        label="🖨️ พิมพ์ / ดาวน์โหลด PDF",
+        data=pdf_file,
+        file_name="work_order.pdf",
+        mime="application/pdf"
+    )
