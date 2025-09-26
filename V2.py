@@ -11,7 +11,7 @@ st.set_page_config(page_title="ฟอร์มใบสั่งงาน IK", p
 st.markdown(
     """
     <div style="text-align: center; padding: 20px;">
-        <h1 style="color:#2E86C1;">📋 ฟอร์มใบสั่งงาน</h1>
+        <h1 style="color:#2E86C1;">📄 ใบสั่งงาน</h1>
         <h2 style="color:#117A65;">บริษัท อินะบาตะ ไทย จำกัด</h2>
         <hr style="margin-top:20px; margin-bottom:20px;">
     </div>
@@ -42,8 +42,32 @@ CREATE TABLE IF NOT EXISTS work_orders (
 """)
 conn.commit()
 
-# ===== ฟอร์มกรอกข้อมูล =====
-with st.form("work_order_form", clear_on_submit=True):
+# ===== Layout หลัก (สองคอลัมน์) =====
+left_col, right_col = st.columns([1, 2])
+
+# ===== Left: Checklist =====
+with left_col:
+    st.subheader("☑ รายการ")
+
+    checklist_options = [
+        "ส่งของ/เอกสาร/ตัวอย่าง",
+        "รับของ/เอกสาร/ตัวอย่าง",
+        "เซ็นรับใบกำกับภาษี รับสำเนากลับ 2 ใบ",
+        "เซ็นรับใบกำกับภาษีและวางบิล รับต้นฉบับใบวางบิล และสำเนาใบกำกับภาษีกลับ 1 ใบ",
+        "วางบิล รับต้นฉบับใบวางบิลกลับ",
+        "รับเช็ค ________ ใบ",
+        "อื่นๆ ________________________"
+    ]
+
+    selected_checklist = []
+    for item in checklist_options:
+        if st.checkbox(item):
+            selected_checklist.append(item)
+
+# ===== Right: ข้อมูลฟอร์ม =====
+with right_col:
+    st.subheader("📝 ข้อมูลฟอร์ม")
+
     assigned_to = st.text_input("มอบหมายให้", "DRIVER TXE")
     order_date = st.date_input("วันที่สั่งงาน", date.today())
     time = st.text_input("เวลา")
@@ -56,34 +80,23 @@ with st.form("work_order_form", clear_on_submit=True):
     receiver = st.text_input("ผู้รับ")
     receive_date = st.date_input("วันที่ (รับงาน)", date.today())
 
-    st.markdown("### ☑ รายการ")
-    checklist_options = [
-        "ส่งของ/เอกสาร/ตัวอย่าง",
-        "รับของ/เอกสาร/ตัวอย่าง",
-        "เซ็นรับใบกำกับภาษี รับสำเนากลับ 2 ใบ",
-        "เซ็นรับใบกำกับภาษีและวางบิล รับต้นฉบับใบวางบิล และสำเนาใบกำกับภาษีกลับ 1 ใบ",
-        "วางบิล รับต้นฉบับใบวางบิลกลับ",
-        "รับเช็ค ________ ใบ",
-        "อื่นๆ ________________________"
-    ]
-    checklist = st.multiselect("เลือก Checklist", checklist_options)
+# ===== หมายเหตุ =====
+remark = st.text_area("📝 หมายเหตุ / Remark")
 
-    remark = st.text_area("📝 หมายเหตุ / Remark")
-
-    submitted = st.form_submit_button("✅ บันทึกข้อมูล")
-    if submitted:
-        c.execute("""
-        INSERT INTO work_orders (
-            assigned_to, order_date, time, contact, company, department,
-            address, phone, ordered_by, receiver, receive_date, checklist, remark
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            assigned_to, str(order_date), time, contact, company, department,
-            address, phone, ordered_by, receiver, str(receive_date),
-            ", ".join(checklist), remark
-        ))
-        conn.commit()
-        st.success("✅ บันทึกข้อมูลเรียบร้อยแล้ว!")
+# ===== ปุ่ม Submit =====
+if st.button("✅ บันทึกข้อมูล"):
+    c.execute("""
+    INSERT INTO work_orders (
+        assigned_to, order_date, time, contact, company, department,
+        address, phone, ordered_by, receiver, receive_date, checklist, remark
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        assigned_to, str(order_date), time, contact, company, department,
+        address, phone, ordered_by, receiver, str(receive_date),
+        ", ".join(selected_checklist), remark
+    ))
+    conn.commit()
+    st.success("✅ บันทึกข้อมูลเรียบร้อยแล้ว!")
 
 # ===== ดึงข้อมูลทั้งหมด =====
 st.markdown("---")
@@ -97,25 +110,20 @@ def generate_pdf(row):
     pdf = FPDF()
     pdf.add_page()
 
-    # ✅ ฟอนต์ไทย (ต้องมีไฟล์ THSarabunNew.ttf ในโฟลเดอร์เดียวกัน)
+    # ฟอนต์ไทย (ต้องมีไฟล์ THSarabunNew.ttf ในโฟลเดอร์เดียวกัน)
     pdf.add_font("THSarabunNew", "", "THSarabunNew.ttf", uni=True)
-    pdf.set_font("THSarabunNew", "", 16)
+    pdf.set_font("THSarabunNew", size=16)
 
-    # หัวเรื่อง
-    pdf.set_font("THSarabunNew", "B", 20)
-    pdf.cell(0, 15, "📋 ใบสั่งงาน", ln=True, align="C")
-    pdf.ln(5)
+    pdf.cell(0, 10, "📋 ใบสั่งงาน", ln=True, align="C")
+    pdf.ln(10)
 
-    # วาดตาราง
-    pdf.set_font("THSarabunNew", "", 16)
+    # สร้างตาราง
     col_width = 50
     row_height = 10
 
-    for key, value in row.items():
-        pdf.cell(col_width, row_height, str(key), border=1)
+    for col, value in row.items():
+        pdf.cell(col_width, row_height, str(col), border=1)
         pdf.multi_cell(0, row_height, str(value), border=1)
-
-    # ✅ คืนค่า bytes (ไม่ต้อง encode)
     return pdf.output(dest="S").encode("latin-1")
 
 # ===== ปุ่มพิมพ์ / ดาวน์โหลด PDF =====
